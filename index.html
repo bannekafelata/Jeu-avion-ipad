@@ -1,333 +1,257 @@
 <!DOCTYPE html>
 <html lang="fr">
 <head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Jeu d'avion</title>
-  <style>
-    body {
-      margin: 0;
-      background: linear-gradient(to bottom, #87ceeb, #dff6ff);
-      overflow: hidden;
-      font-family: Arial, sans-serif;
-    }
-
-    canvas {
-      display: block;
-      margin: 0 auto;
-      background: linear-gradient(to bottom, #7ec8ff, #eaf8ff);
-      border: 3px solid #222;
-    }
-
-    .info {
-      position: absolute;
-      top: 10px;
-      left: 50%;
-      transform: translateX(-50%);
-      background: rgba(255,255,255,0.85);
-      padding: 10px 18px;
-      border-radius: 12px;
-      font-weight: bold;
-      font-size: 18px;
-    }
-  </style>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Jeu Avion Montagnes</title>
+<style>
+body{margin:0;overflow:hidden;font-family:Arial;background:#87ceeb;touch-action:none}
+canvas{display:block;width:100vw;height:70vh;background:linear-gradient(#78c9ff,#eaf8ff)}
+#hud{position:fixed;top:10px;left:50%;transform:translateX(-50%);background:white;padding:10px 15px;border-radius:12px;font-weight:bold}
+#menu,#gameover{position:fixed;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;background:rgba(0,0,0,.45);color:white;z-index:10}
+button{font-size:24px;padding:15px 25px;border:0;border-radius:15px;font-weight:bold}
+.controls{position:fixed;bottom:15px;left:0;right:0;display:flex;justify-content:space-around;align-items:center}
+.pad{display:grid;grid-template-columns:65px 65px 65px;gap:7px}
+.btn{background:white}
+.fire{background:orange;color:white;border-radius:50%;width:110px;height:110px}
+.hidden{display:none!important}
+.empty{visibility:hidden}
+</style>
 </head>
 <body>
-  <div class="info" id="info">Score: 0 | Vies: 3</div>
-  <canvas id="game" width="900" height="550"></canvas>
 
-  <script>
-    const canvas = document.getElementById("game");
-    const ctx = canvas.getContext("2d");
-    const info = document.getElementById("info");
+<div id="hud">Score : 0 | Vies : 3</div>
 
-    const keys = {};
+<div id="menu">
+  <h1>✈️ Avion des Montagnes</h1>
+  <button onclick="startGame()">Commencer</button>
+</div>
 
-    const player = {
-      x: 100,
-      y: 260,
-      width: 60,
-      height: 30,
-      speed: 5,
-      lives: 3
-    };
+<div id="gameover" class="hidden">
+  <h1>Game Over</h1>
+  <p id="finalScore"></p>
+  <button onclick="restartGame()">Rejouer</button>
+</div>
 
-    const bullets = [];
-    const missiles = [];
-    const clouds = [];
+<canvas id="game"></canvas>
 
-    let score = 0;
-    let gameOver = false;
-    let missileSpawnTimer = 0;
-    let cloudSpawnTimer = 0;
+<div class="controls">
+  <div class="pad">
+    <div class="empty"></div><button class="btn" id="up">▲</button><div class="empty"></div>
+    <button class="btn" id="left">◀</button><div class="empty"></div><button class="btn" id="right">▶</button>
+    <div class="empty"></div><button class="btn" id="down">▼</button><div class="empty"></div>
+  </div>
+  <button class="fire" id="fire">TIR</button>
+</div>
 
-    document.addEventListener("keydown", (e) => {
-      keys[e.key] = true;
+<script>
+const canvas=document.getElementById("game");
+const ctx=canvas.getContext("2d");
+const hud=document.getElementById("hud");
 
-      if (e.key === " " && !gameOver) {
-        bullets.push({
-          x: player.x + player.width,
-          y: player.y + player.height / 2 - 3,
-          width: 14,
-          height: 6,
-          speed: 8
-        });
-      }
+function resize(){
+  canvas.width=innerWidth;
+  canvas.height=innerHeight*0.7;
+}
+resize();
+addEventListener("resize",resize);
 
-      if (e.key === "Enter" && gameOver) {
-        restartGame();
-      }
+let started=false, gameOver=false, score=0, spawn=0, difficulty=3;
+
+const player={x:80,y:160,w:60,h:30,s:5,lives:3};
+const bullets=[];
+const missiles=[];
+const keys={up:false,down:false,left:false,right:false};
+
+let audioCtx;
+
+function playMusic(){
+  audioCtx=new (window.AudioContext||window.webkitAudioContext)();
+  function note(freq,time){
+    const osc=audioCtx.createOscillator();
+    const gain=audioCtx.createGain();
+    osc.frequency.value=freq;
+    osc.type="square";
+    gain.gain.value=0.03;
+    osc.connect(gain);
+    gain.connect(audioCtx.destination);
+    osc.start(time);
+    osc.stop(time+0.18);
+  }
+  setInterval(()=>{
+    if(!started||gameOver)return;
+    const t=audioCtx.currentTime;
+    note(440,t);
+    note(660,t+0.25);
+    note(550,t+0.5);
+  },900);
+}
+
+function startGame(){
+  document.getElementById("menu").classList.add("hidden");
+  started=true;
+  playMusic();
+}
+
+function restartGame(){
+  document.getElementById("gameover").classList.add("hidden");
+  player.x=80; player.y=160; player.lives=3;
+  bullets.length=0; missiles.length=0;
+  score=0; spawn=0; difficulty=3;
+  gameOver=false; started=true;
+}
+
+function bind(id,key){
+  const el=document.getElementById(id);
+  el.addEventListener("touchstart",e=>{e.preventDefault();keys[key]=true},{passive:false});
+  el.addEventListener("touchend",e=>{e.preventDefault();keys[key]=false},{passive:false});
+  el.addEventListener("touchcancel",e=>{e.preventDefault();keys[key]=false},{passive:false});
+}
+bind("up","up"); bind("down","down"); bind("left","left"); bind("right","right");
+
+document.getElementById("fire").addEventListener("touchstart",e=>{
+  e.preventDefault();
+  shoot();
+},{passive:false});
+
+function shoot(){
+  if(!started||gameOver)return;
+  bullets.push({x:player.x+player.w+10,y:player.y+14,w:15,h:6,s:9});
+}
+
+function mountains(){
+  ctx.fillStyle="#7b7b7b";
+  ctx.beginPath();
+  ctx.moveTo(0,canvas.height-20);
+  ctx.lineTo(160,canvas.height-190);
+  ctx.lineTo(320,canvas.height-20);
+  ctx.lineTo(480,canvas.height-210);
+  ctx.lineTo(680,canvas.height-20);
+  ctx.lineTo(850,canvas.height-170);
+  ctx.lineTo(canvas.width,canvas.height-20);
+  ctx.closePath();
+  ctx.fill();
+
+  ctx.fillStyle="white";
+  ctx.beginPath();
+  ctx.moveTo(160,canvas.height-190);
+  ctx.lineTo(125,canvas.height-150);
+  ctx.lineTo(195,canvas.height-150);
+  ctx.closePath();
+  ctx.fill();
+
+  ctx.fillStyle="#4caf50";
+  ctx.fillRect(0,canvas.height-25,canvas.width,25);
+}
+
+function drawPlayer(){
+  ctx.fillStyle="red";
+  ctx.fillRect(player.x,player.y+8,player.w,14);
+  ctx.beginPath();
+  ctx.moveTo(player.x+player.w,player.y+8);
+  ctx.lineTo(player.x+player.w+18,player.y+15);
+  ctx.lineTo(player.x+player.w,player.y+22);
+  ctx.fill();
+  ctx.fillStyle="darkred";
+  ctx.beginPath();
+  ctx.moveTo(player.x+20,player.y+10);
+  ctx.lineTo(player.x,player.y-10);
+  ctx.lineTo(player.x+30,player.y+10);
+  ctx.fill();
+  ctx.fillStyle="navy";
+  ctx.fillRect(player.x+38,player.y+10,12,10);
+}
+
+function drawMissiles(){
+  missiles.forEach(m=>{
+    ctx.fillStyle="#444";
+    ctx.fillRect(m.x,m.y,m.w,m.h);
+    ctx.fillStyle="orange";
+    ctx.beginPath();
+    ctx.moveTo(m.x+m.w,m.y+2);
+    ctx.lineTo(m.x+m.w+12,m.y+m.h/2);
+    ctx.lineTo(m.x+m.w,m.y+m.h-2);
+    ctx.fill();
+  });
+}
+
+function update(){
+  if(!started||gameOver)return;
+
+  if(keys.up)player.y-=player.s;
+  if(keys.down)player.y+=player.s;
+  if(keys.left)player.x-=player.s;
+  if(keys.right)player.x+=player.s;
+
+  player.x=Math.max(0,Math.min(canvas.width-player.w-20,player.x));
+  player.y=Math.max(0,Math.min(canvas.height-70,player.y));
+
+  bullets.forEach(b=>b.x+=b.s);
+  for(let i=bullets.length-1;i>=0;i--) if(bullets[i].x>canvas.width) bullets.splice(i,1);
+
+  spawn++;
+  if(spawn>40){
+    missiles.push({
+      x:canvas.width+20,
+      y:Math.random()*(canvas.height-80),
+      w:35,h:12,
+      s:difficulty+Math.random()*2
     });
+    spawn=0;
+    difficulty+=0.03;
+  }
 
-    document.addEventListener("keyup", (e) => {
-      keys[e.key] = false;
-    });
+  missiles.forEach(m=>m.x-=m.s);
 
-    function drawPlayer() {
-      // corps
-      ctx.fillStyle = "#d62828";
-      ctx.fillRect(player.x, player.y + 8, player.width, 14);
-
-      // nez
-      ctx.beginPath();
-      ctx.moveTo(player.x + player.width, player.y + 8);
-      ctx.lineTo(player.x + player.width + 16, player.y + 15);
-      ctx.lineTo(player.x + player.width, player.y + 22);
-      ctx.closePath();
-      ctx.fill();
-
-      // aile
-      ctx.fillStyle = "#a4161a";
-      ctx.beginPath();
-      ctx.moveTo(player.x + 20, player.y + 10);
-      ctx.lineTo(player.x + 5, player.y - 8);
-      ctx.lineTo(player.x + 28, player.y + 10);
-      ctx.closePath();
-      ctx.fill();
-
-      // aile basse
-      ctx.beginPath();
-      ctx.moveTo(player.x + 20, player.y + 20);
-      ctx.lineTo(player.x + 5, player.y + 38);
-      ctx.lineTo(player.x + 28, player.y + 20);
-      ctx.closePath();
-      ctx.fill();
-
-      // cockpit
-      ctx.fillStyle = "#1d3557";
-      ctx.fillRect(player.x + 36, player.y + 10, 12, 10);
+  for(let i=missiles.length-1;i>=0;i--){
+    if(hit(player,missiles[i])){
+      missiles.splice(i,1);
+      player.lives--;
+      if(player.lives<=0) endGame();
     }
+  }
 
-    function drawBullets() {
-      ctx.fillStyle = "#ffb703";
-      for (const bullet of bullets) {
-        ctx.fillRect(bullet.x, bullet.y, bullet.width, bullet.height);
+  for(let i=missiles.length-1;i>=0;i--){
+    for(let j=bullets.length-1;j>=0;j--){
+      if(hit(bullets[j],missiles[i])){
+        missiles.splice(i,1);
+        bullets.splice(j,1);
+        score+=10;
+        break;
       }
     }
+  }
 
-    function drawMissiles() {
-      for (const missile of missiles) {
-        // corps
-        ctx.fillStyle = "#555";
-        ctx.fillRect(missile.x, missile.y, missile.width, missile.height);
+  hud.textContent=`Score : ${score} | Vies : ${player.lives}`;
+}
 
-        // pointe
-        ctx.beginPath();
-        ctx.moveTo(missile.x, missile.y);
-        ctx.lineTo(missile.x - 12, missile.y + missile.height / 2);
-        ctx.lineTo(missile.x, missile.y + missile.height);
-        ctx.closePath();
-        ctx.fill();
+function hit(a,b){
+  return a.x<b.x+b.w && a.x+a.w>b.x && a.y<b.y+b.h && a.y+a.h>b.y;
+}
 
-        // flammes
-        ctx.fillStyle = "#ff6b00";
-        ctx.beginPath();
-        ctx.moveTo(missile.x + missile.width, missile.y + 3);
-        ctx.lineTo(missile.x + missile.width + 10, missile.y + missile.height / 2);
-        ctx.lineTo(missile.x + missile.width, missile.y + missile.height - 3);
-        ctx.closePath();
-        ctx.fill();
-      }
-    }
+function endGame(){
+  gameOver=true;
+  document.getElementById("finalScore").textContent="Score final : "+score;
+  document.getElementById("gameover").classList.remove("hidden");
+}
 
-    function drawClouds() {
-      ctx.fillStyle = "rgba(255,255,255,0.8)";
-      for (const cloud of clouds) {
-        ctx.beginPath();
-        ctx.arc(cloud.x, cloud.y, 18, 0, Math.PI * 2);
-        ctx.arc(cloud.x + 20, cloud.y - 8, 16, 0, Math.PI * 2);
-        ctx.arc(cloud.x + 36, cloud.y, 18, 0, Math.PI * 2);
-        ctx.fill();
-      }
-    }
+function loop(){
+  ctx.clearRect(0,0,canvas.width,canvas.height);
+  mountains();
 
-    function updatePlayer() {
-      if (keys["ArrowUp"]) player.y -= player.speed;
-      if (keys["ArrowDown"]) player.y += player.speed;
-      if (keys["ArrowLeft"]) player.x -= player.speed;
-      if (keys["ArrowRight"]) player.x += player.speed;
+  update();
 
-      if (player.x < 0) player.x = 0;
-      if (player.y < 0) player.y = 0;
-      if (player.x + player.width + 16 > canvas.width) {
-        player.x = canvas.width - player.width - 16;
-      }
-      if (player.y + player.height + 8 > canvas.height) {
-        player.y = canvas.height - player.height - 8;
-      }
-    }
+  drawPlayer();
 
-    function updateBullets() {
-      for (let i = bullets.length - 1; i >= 0; i--) {
-        bullets[i].x += bullets[i].speed;
-        if (bullets[i].x > canvas.width) {
-          bullets.splice(i, 1);
-        }
-      }
-    }
+  ctx.fillStyle="gold";
+  bullets.forEach(b=>ctx.fillRect(b.x,b.y,b.w,b.h));
 
-    function spawnMissile() {
-      missiles.push({
-        x: canvas.width + 20,
-        y: Math.random() * (canvas.height - 30),
-        width: 34,
-        height: 12,
-        speed: 3 + Math.random() * 2
-      });
-    }
+  drawMissiles();
 
-    function updateMissiles() {
-      missileSpawnTimer++;
-      if (missileSpawnTimer > 40) {
-        spawnMissile();
-        missileSpawnTimer = 0;
-      }
+  requestAnimationFrame(loop);
+}
 
-      for (let i = missiles.length - 1; i >= 0; i--) {
-        missiles[i].x -= missiles[i].speed;
-
-        if (missiles[i].x + missiles[i].width < 0) {
-          missiles.splice(i, 1);
-          continue;
-        }
-
-        if (isColliding(player, missiles[i])) {
-          missiles.splice(i, 1);
-          player.lives--;
-          if (player.lives <= 0) {
-            gameOver = true;
-          }
-        }
-      }
-    }
-
-    function spawnCloud() {
-      clouds.push({
-        x: canvas.width + 50,
-        y: 40 + Math.random() * (canvas.height - 80),
-        speed: 1 + Math.random()
-      });
-    }
-
-    function updateClouds() {
-      cloudSpawnTimer++;
-      if (cloudSpawnTimer > 90) {
-        spawnCloud();
-        cloudSpawnTimer = 0;
-      }
-
-      for (let i = clouds.length - 1; i >= 0; i--) {
-        clouds[i].x -= clouds[i].speed;
-        if (clouds[i].x < -80) {
-          clouds.splice(i, 1);
-        }
-      }
-    }
-
-    function checkBulletHits() {
-      for (let i = missiles.length - 1; i >= 0; i--) {
-        for (let j = bullets.length - 1; j >= 0; j--) {
-          if (isColliding(bullets[j], missiles[i])) {
-            missiles.splice(i, 1);
-            bullets.splice(j, 1);
-            score += 10;
-            break;
-          }
-        }
-      }
-    }
-
-    function isColliding(a, b) {
-      return (
-        a.x < b.x + b.width &&
-        a.x + a.width > b.x &&
-        a.y < b.y + b.height &&
-        a.y + a.height > b.y
-      );
-    }
-
-    function drawGround() {
-      ctx.fillStyle = "#7fb069";
-      ctx.fillRect(0, canvas.height - 20, canvas.width, 20);
-    }
-
-    function drawGameOver() {
-      ctx.fillStyle = "rgba(0,0,0,0.5)";
-      ctx.fillRect(0, 0, canvas.width, canvas.height);
-
-      ctx.fillStyle = "#fff";
-      ctx.font = "bold 48px Arial";
-      ctx.textAlign = "center";
-      ctx.fillText("Game Over", canvas.width / 2, canvas.height / 2 - 20);
-
-      ctx.font = "28px Arial";
-      ctx.fillText("Appuie sur Entrée pour recommencer", canvas.width / 2, canvas.height / 2 + 35);
-    }
-
-    function updateInfo() {
-      info.textContent = `Score: ${score} | Vies: ${player.lives}`;
-    }
-
-    function restartGame() {
-      player.x = 100;
-      player.y = 260;
-      player.lives = 3;
-      bullets.length = 0;
-      missiles.length = 0;
-      clouds.length = 0;
-      score = 0;
-      gameOver = false;
-      missileSpawnTimer = 0;
-      cloudSpawnTimer = 0;
-    }
-
-    function loop() {
-      ctx.clearRect(0, 0, canvas.width, canvas.height);
-
-      updateClouds();
-      drawClouds();
-      drawGround();
-
-      if (!gameOver) {
-        updatePlayer();
-        updateBullets();
-        updateMissiles();
-        checkBulletHits();
-      }
-
-      drawPlayer();
-      drawBullets();
-      drawMissiles();
-      updateInfo();
-
-      if (gameOver) {
-        drawGameOver();
-      }
-
-      requestAnimationFrame(loop);
-    }
-
-    loop();
-  </script>
+loop();
+</script>
 </body>
 </html>
