@@ -3,19 +3,14 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Jeu Avion Montagnes</title>
+<title>Avion des Montagnes</title>
 <style>
-body{margin:0;overflow:hidden;font-family:Arial;background:#87ceeb;touch-action:none}
-canvas{display:block;width:100vw;height:70vh;background:linear-gradient(#78c9ff,#eaf8ff)}
-#hud{position:fixed;top:10px;left:50%;transform:translateX(-50%);background:white;padding:10px 15px;border-radius:12px;font-weight:bold}
-#menu,#gameover{position:fixed;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;background:rgba(0,0,0,.45);color:white;z-index:10}
-button{font-size:24px;padding:15px 25px;border:0;border-radius:15px;font-weight:bold}
-.controls{position:fixed;bottom:15px;left:0;right:0;display:flex;justify-content:space-around;align-items:center}
-.pad{display:grid;grid-template-columns:65px 65px 65px;gap:7px}
-.btn{background:white}
-.fire{background:orange;color:white;border-radius:50%;width:110px;height:110px}
+body{margin:0;overflow:hidden;font-family:Arial;background:#87ceeb}
+canvas{display:block;width:100vw;height:100vh;background:linear-gradient(#58bfff,#eaf8ff)}
+#hud{position:fixed;top:15px;left:50%;transform:translateX(-50%);background:white;padding:10px 18px;border-radius:14px;font-weight:bold;font-size:20px}
+#menu,#gameover{position:fixed;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;background:rgba(0,0,0,.45);color:white;z-index:10;text-align:center}
+button{font-size:26px;padding:15px 30px;border:0;border-radius:16px;font-weight:bold;background:orange;color:white}
 .hidden{display:none!important}
-.empty{visibility:hidden}
 </style>
 </head>
 <body>
@@ -24,25 +19,18 @@ button{font-size:24px;padding:15px 25px;border:0;border-radius:15px;font-weight:
 
 <div id="menu">
   <h1>✈️ Avion des Montagnes</h1>
+  <p>Flèches pour bouger · Espace pour tirer</p>
   <button onclick="startGame()">Commencer</button>
 </div>
 
 <div id="gameover" class="hidden">
   <h1>Game Over</h1>
   <p id="finalScore"></p>
+  <p>Appuie sur Entrée pour rejouer</p>
   <button onclick="restartGame()">Rejouer</button>
 </div>
 
 <canvas id="game"></canvas>
-
-<div class="controls">
-  <div class="pad">
-    <div class="empty"></div><button class="btn" id="up">▲</button><div class="empty"></div>
-    <button class="btn" id="left">◀</button><div class="empty"></div><button class="btn" id="right">▶</button>
-    <div class="empty"></div><button class="btn" id="down">▼</button><div class="empty"></div>
-  </div>
-  <button class="fire" id="fire">TIR</button>
-</div>
 
 <script>
 const canvas=document.getElementById("game");
@@ -51,125 +39,165 @@ const hud=document.getElementById("hud");
 
 function resize(){
   canvas.width=innerWidth;
-  canvas.height=innerHeight*0.7;
+  canvas.height=innerHeight;
 }
 resize();
 addEventListener("resize",resize);
 
 let started=false, gameOver=false, score=0, spawn=0, difficulty=3;
-
-const player={x:80,y:160,w:60,h:30,s:5,lives:3};
+const player={x:90,y:250,w:65,h:32,s:6,lives:3};
 const bullets=[];
 const missiles=[];
-const keys={up:false,down:false,left:false,right:false};
+const keys={};
 
 let audioCtx;
+let musicInterval;
 
-function playMusic(){
-  audioCtx=new (window.AudioContext||window.webkitAudioContext)();
-  function note(freq,time){
-    const osc=audioCtx.createOscillator();
-    const gain=audioCtx.createGain();
-    osc.frequency.value=freq;
-    osc.type="square";
-    gain.gain.value=0.03;
-    osc.connect(gain);
-    gain.connect(audioCtx.destination);
-    osc.start(time);
-    osc.stop(time+0.18);
+document.addEventListener("keydown",e=>{
+  keys[e.key]=true;
+
+  if(e.key===" "){
+    e.preventDefault();
+    shoot();
   }
-  setInterval(()=>{
-    if(!started||gameOver)return;
-    const t=audioCtx.currentTime;
-    note(440,t);
-    note(660,t+0.25);
-    note(550,t+0.5);
-  },900);
-}
+
+  if(e.key==="Enter" && gameOver){
+    restartGame();
+  }
+});
+
+document.addEventListener("keyup",e=>{
+  keys[e.key]=false;
+});
 
 function startGame(){
   document.getElementById("menu").classList.add("hidden");
   started=true;
-  playMusic();
+  startMusic();
+}
+
+function startMusic(){
+  if(audioCtx)return;
+  audioCtx=new (window.AudioContext||window.webkitAudioContext)();
+
+  const melody=[440,520,660,520,740,660,520,440];
+  let i=0;
+
+  musicInterval=setInterval(()=>{
+    if(!started||gameOver)return;
+
+    const osc=audioCtx.createOscillator();
+    const gain=audioCtx.createGain();
+
+    osc.type="square";
+    osc.frequency.value=melody[i%melody.length];
+
+    gain.gain.setValueAtTime(0.04,audioCtx.currentTime);
+    gain.gain.exponentialRampToValueAtTime(0.001,audioCtx.currentTime+0.18);
+
+    osc.connect(gain);
+    gain.connect(audioCtx.destination);
+
+    osc.start();
+    osc.stop(audioCtx.currentTime+0.18);
+
+    i++;
+  },170);
+}
+
+function shoot(){
+  if(!started||gameOver)return;
+  bullets.push({x:player.x+player.w+12,y:player.y+15,w:18,h:6,s:10});
 }
 
 function restartGame(){
   document.getElementById("gameover").classList.add("hidden");
-  player.x=80; player.y=160; player.lives=3;
-  bullets.length=0; missiles.length=0;
-  score=0; spawn=0; difficulty=3;
-  gameOver=false; started=true;
+  player.x=90;
+  player.y=250;
+  player.lives=3;
+  bullets.length=0;
+  missiles.length=0;
+  score=0;
+  spawn=0;
+  difficulty=3;
+  gameOver=false;
+  started=true;
 }
 
-function bind(id,key){
-  const el=document.getElementById(id);
-  el.addEventListener("touchstart",e=>{e.preventDefault();keys[key]=true},{passive:false});
-  el.addEventListener("touchend",e=>{e.preventDefault();keys[key]=false},{passive:false});
-  el.addEventListener("touchcancel",e=>{e.preventDefault();keys[key]=false},{passive:false});
-}
-bind("up","up"); bind("down","down"); bind("left","left"); bind("right","right");
-
-document.getElementById("fire").addEventListener("touchstart",e=>{
-  e.preventDefault();
-  shoot();
-},{passive:false});
-
-function shoot(){
-  if(!started||gameOver)return;
-  bullets.push({x:player.x+player.w+10,y:player.y+14,w:15,h:6,s:9});
-}
-
-function mountains(){
-  ctx.fillStyle="#7b7b7b";
+function drawMountains(){
+  ctx.fillStyle="#666";
   ctx.beginPath();
-  ctx.moveTo(0,canvas.height-20);
-  ctx.lineTo(160,canvas.height-190);
-  ctx.lineTo(320,canvas.height-20);
-  ctx.lineTo(480,canvas.height-210);
-  ctx.lineTo(680,canvas.height-20);
-  ctx.lineTo(850,canvas.height-170);
-  ctx.lineTo(canvas.width,canvas.height-20);
+  ctx.moveTo(0,canvas.height);
+  ctx.lineTo(180,canvas.height-260);
+  ctx.lineTo(360,canvas.height);
+  ctx.lineTo(550,canvas.height-310);
+  ctx.lineTo(760,canvas.height);
+  ctx.lineTo(980,canvas.height-240);
+  ctx.lineTo(canvas.width,canvas.height);
   ctx.closePath();
   ctx.fill();
 
   ctx.fillStyle="white";
   ctx.beginPath();
-  ctx.moveTo(160,canvas.height-190);
-  ctx.lineTo(125,canvas.height-150);
-  ctx.lineTo(195,canvas.height-150);
+  ctx.moveTo(180,canvas.height-260);
+  ctx.lineTo(135,canvas.height-195);
+  ctx.lineTo(225,canvas.height-195);
   ctx.closePath();
   ctx.fill();
 
-  ctx.fillStyle="#4caf50";
-  ctx.fillRect(0,canvas.height-25,canvas.width,25);
+  ctx.beginPath();
+  ctx.moveTo(550,canvas.height-310);
+  ctx.lineTo(495,canvas.height-230);
+  ctx.lineTo(605,canvas.height-230);
+  ctx.closePath();
+  ctx.fill();
+
+  ctx.fillStyle="#3fa34d";
+  ctx.fillRect(0,canvas.height-45,canvas.width,45);
 }
 
 function drawPlayer(){
   ctx.fillStyle="red";
-  ctx.fillRect(player.x,player.y+8,player.w,14);
+  ctx.fillRect(player.x,player.y+9,player.w,15);
+
   ctx.beginPath();
-  ctx.moveTo(player.x+player.w,player.y+8);
-  ctx.lineTo(player.x+player.w+18,player.y+15);
-  ctx.lineTo(player.x+player.w,player.y+22);
+  ctx.moveTo(player.x+player.w,player.y+9);
+  ctx.lineTo(player.x+player.w+22,player.y+16);
+  ctx.lineTo(player.x+player.w,player.y+24);
   ctx.fill();
+
   ctx.fillStyle="darkred";
   ctx.beginPath();
-  ctx.moveTo(player.x+20,player.y+10);
-  ctx.lineTo(player.x,player.y-10);
-  ctx.lineTo(player.x+30,player.y+10);
+  ctx.moveTo(player.x+22,player.y+10);
+  ctx.lineTo(player.x+4,player.y-15);
+  ctx.lineTo(player.x+34,player.y+10);
   ctx.fill();
+
+  ctx.beginPath();
+  ctx.moveTo(player.x+22,player.y+24);
+  ctx.lineTo(player.x+4,player.y+48);
+  ctx.lineTo(player.x+34,player.y+24);
+  ctx.fill();
+
   ctx.fillStyle="navy";
-  ctx.fillRect(player.x+38,player.y+10,12,10);
+  ctx.fillRect(player.x+40,player.y+11,13,10);
 }
 
 function drawMissiles(){
   missiles.forEach(m=>{
-    ctx.fillStyle="#444";
+    ctx.fillStyle="#333";
     ctx.fillRect(m.x,m.y,m.w,m.h);
+
+    ctx.beginPath();
+    ctx.moveTo(m.x,m.y);
+    ctx.lineTo(m.x-14,m.y+m.h/2);
+    ctx.lineTo(m.x,m.y+m.h);
+    ctx.fill();
+
     ctx.fillStyle="orange";
     ctx.beginPath();
     ctx.moveTo(m.x+m.w,m.y+2);
-    ctx.lineTo(m.x+m.w+12,m.y+m.h/2);
+    ctx.lineTo(m.x+m.w+14,m.y+m.h/2);
     ctx.lineTo(m.x+m.w,m.y+m.h-2);
     ctx.fill();
   });
@@ -178,27 +206,30 @@ function drawMissiles(){
 function update(){
   if(!started||gameOver)return;
 
-  if(keys.up)player.y-=player.s;
-  if(keys.down)player.y+=player.s;
-  if(keys.left)player.x-=player.s;
-  if(keys.right)player.x+=player.s;
+  if(keys["ArrowUp"])player.y-=player.s;
+  if(keys["ArrowDown"])player.y+=player.s;
+  if(keys["ArrowLeft"])player.x-=player.s;
+  if(keys["ArrowRight"])player.x+=player.s;
 
-  player.x=Math.max(0,Math.min(canvas.width-player.w-20,player.x));
-  player.y=Math.max(0,Math.min(canvas.height-70,player.y));
+  player.x=Math.max(0,Math.min(canvas.width-player.w-25,player.x));
+  player.y=Math.max(0,Math.min(canvas.height-95,player.y));
 
   bullets.forEach(b=>b.x+=b.s);
-  for(let i=bullets.length-1;i>=0;i--) if(bullets[i].x>canvas.width) bullets.splice(i,1);
+  for(let i=bullets.length-1;i>=0;i--){
+    if(bullets[i].x>canvas.width)bullets.splice(i,1);
+  }
 
   spawn++;
-  if(spawn>40){
+  if(spawn>38){
     missiles.push({
-      x:canvas.width+20,
-      y:Math.random()*(canvas.height-80),
-      w:35,h:12,
+      x:canvas.width+30,
+      y:Math.random()*(canvas.height-120)+30,
+      w:40,
+      h:14,
       s:difficulty+Math.random()*2
     });
     spawn=0;
-    difficulty+=0.03;
+    difficulty+=0.025;
   }
 
   missiles.forEach(m=>m.x-=m.s);
@@ -207,7 +238,7 @@ function update(){
     if(hit(player,missiles[i])){
       missiles.splice(i,1);
       player.lives--;
-      if(player.lives<=0) endGame();
+      if(player.lives<=0)endGame();
     }
   }
 
@@ -237,8 +268,7 @@ function endGame(){
 
 function loop(){
   ctx.clearRect(0,0,canvas.width,canvas.height);
-  mountains();
-
+  drawMountains();
   update();
 
   drawPlayer();
